@@ -80,4 +80,4 @@ def write(df, filename: str='test.csv'):
     pd.DataFrame([df]).to_csv(filename, header=False, index=False, mode='a')
 
 for idx, data in enumerate(points(radius=50, limit=[10, 170], R=R, r=r, n=1000, Llim=[10, 190], A=A)):
-    write(data, filename='test.csv')
+    write(data, filename=r'C:\Users\nebolsinvasili\Documents\projects\python\rpr\src\models\data\test.csv')
