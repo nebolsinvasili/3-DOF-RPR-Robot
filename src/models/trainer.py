@@ -15,12 +15,7 @@ class ModelTrainer:
         self.optimizer = optimizer
         self.device = device
         self.metrics = metrics or {}
-        self.history = {
-            "train_loss": [],
-            "train_accuracy": [],
-            "valid_loss": [],
-            "valid_accuracy": [],
-        }
+        self.history = {"train_loss": [], "valid_loss": []}
         for metric in self.metrics:
             self.history[f"train_{metric}"] = []
             self.history[f"valid_{metric}"] = []
@@ -28,21 +23,30 @@ class ModelTrainer:
         # Initialize the interactive mode for plotting
         plt.ion()
         self.fig, self.axs = (
-            plt.subplots(1, 3, figsize=(15, 5))
+            plt.subplots(1, 2, figsize=(8, 3))
             if self.metrics
-            else plt.subplots(1, 2, figsize=(10, 5))
+            else plt.subplots(1, 1, figsize=(5, 3))
         )
 
     def fit(
-        self, train_data, valid_data, epochs, save_path, model_name, test_data=None
+        self,
+        train_data,
+        valid_data,
+        batch_size,
+        epochs,
+        save_path,
+        model_name,
+        test_data=None,
     ):
         if isinstance(train_data, tuple):
             train_data = DataLoader(
-                list(zip(train_data[0], train_data[1])), batch_size=32, shuffle=True
+                list(zip(train_data[0], train_data[1])),
+                batch_size=batch_size,
+                shuffle=True,
             )
         if isinstance(valid_data, tuple):
             valid_data = DataLoader(
-                list(zip(valid_data[0], valid_data[1])), batch_size=32, shuffle=False
+                list(zip(valid_data[0], valid_data[1])), shuffle=False
             )
 
         best_valid_loss = float("inf")
@@ -50,14 +54,14 @@ class ModelTrainer:
         start_time_sec = time.time()
 
         for epoch in range(epochs):
+            print(f"Epoch {epoch+1}/{epochs}")
+
             train_results = self.train_one_epoch(train_data)
             valid_results = self.validate_one_epoch(valid_data)
             self.update_history(train_results, valid_results)
 
             # Print progress
-            self.print_epoch_status(
-                epoch, epochs, train_data, valid_data, train_results, valid_results
-            )
+            self.print_epoch_status(train_results, valid_results)
 
             # Saving model if it's the best one
             if valid_results["loss"] < best_valid_loss:
@@ -96,7 +100,12 @@ class ModelTrainer:
         total_loss = 0
         correct = 0
         total = 0
-        progress_bar = tqdm(data_loader, desc="Training", leave=False)
+        progress_bar = tqdm(data_loader, desc="Training", 
+                            ncols=60, 
+                            leave=True, 
+                            bar_format='{l_bar}{bar}| {n_fmt}/{total_fmt}', 
+                            # ascii="|", colour='g',
+                            )
         for x, y in progress_bar:
             x, y = x.to(self.device), y.to(self.device)
             self.optimizer.zero_grad()
@@ -110,7 +119,7 @@ class ModelTrainer:
             total += y.size(0)
             for metric in self.metrics:
                 metrics[metric] += self.metrics[metric](outputs, y).item()
-            progress_bar.set_postfix(loss=loss.item())
+            # progress_bar.set_postfix(loss=loss.item())
         metrics = {metric: metrics[metric] / len(data_loader) for metric in metrics}
         metrics["loss"] = total_loss / len(data_loader)
         return metrics
@@ -141,16 +150,10 @@ class ModelTrainer:
             self.history[f"train_{key}"].append(train_results[key])
             self.history[f"valid_{key}"].append(valid_results[key])
 
-    def print_epoch_status(
-        self, epoch, epochs, train_data, valid_data, train_results, valid_results
-    ):
-        train_batches = len(train_data)
-        print(f"Epoch {epoch+1}/{epochs}")
-        print(f"train_batches: {train_batches}", end="")
+    def print_epoch_status(self, train_results, valid_results):
         for key in train_results:
-            print(
-                f" - train_{key}: {train_results[key]:.4f} - val_{key}: {valid_results[key]:.4f}"
-            )
+            print(f" - train_{key}: {train_results[key]:.4f} - val_{key}: {valid_results[key]:.4f}", end="")
+        print()
 
     def plot_learning_curves(self):
         fig, axs = (
@@ -174,7 +177,7 @@ class ModelTrainer:
             self.axs[i].plot(
                 self.history[f"valid_{key}"], label=f"Valid {key.capitalize()}"
             )
-            self.axs[i].set_title(f"{key.capitalize()} over Epochs")
+            self.axs[i].set_title(f"{key.capitalize()} over Epochs", )
             self.axs[i].legend()
 
         plt.draw()
@@ -183,19 +186,21 @@ class ModelTrainer:
     def save_final_plot(self, save_path, model_name):
         plt.savefig(os.path.join(save_path, f"{model_name}_training_plot.png"))
 
-    def test(self, data_loader):
+    def test(self, test_data):
+        if isinstance(test_data, tuple):
+            test_data = DataLoader(list(zip(test_data[0], test_data[1])), shuffle=True)
         self.model.eval()
         metrics = {metric: 0 for metric in self.metrics}
         total = 0
         with torch.no_grad():
-            for x, y in data_loader:
+            for x, y in test_data:
                 x, y = x.to(self.device), y.to(self.device)
                 outputs = self.model(x)
                 for metric in self.metrics:
                     metrics[metric] += self.metrics[metric](outputs, y).item()
                 total += y.size(0)
         for metric in metrics:
-            metrics[metric] /= len(data_loader)
+            metrics[metric] /= len(test_data)
         print("Test Results:")
         for metric, value in metrics.items():
             print(f"{metric}: {value:.4f}")
